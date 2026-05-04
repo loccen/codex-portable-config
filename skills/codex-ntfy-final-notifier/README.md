@@ -12,7 +12,9 @@ Codex 主代理最终收口通知 skill：在准备最终答复用户前，通�
 
 ## 本地配置
 
-在本机创建 `~/.codex/ntfy-notifier.env`：
+优先直接运行仓库根目录 `./install.sh`。安装脚本会自动创建或修复 `~/.codex/ntfy-notifier.env`，为当前机器生成可用 topic；随后运行 `./doctor.sh` 可直接看到应订阅的完整 topic。
+
+如果不是通过 portable config 安装，而是手工创建 env，使用下面的格式，并把 `NTFY_TOPIC` 替换成你自己的值：
 
 ```bash
 export NTFY_SERVER="https://ntfy.sh"
