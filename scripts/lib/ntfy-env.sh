@@ -78,7 +78,7 @@ ntfy_device_fragment() {
 ntfy_random_suffix() {
   local random_part
 
-  random_part="$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 8)"
+  random_part="$(LC_ALL=C od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
   if [[ -z "$random_part" ]]; then
     random_part="$(date '+%s')"
   fi
