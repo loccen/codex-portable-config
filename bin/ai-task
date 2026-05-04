@@ -1,0 +1,135 @@
+#!/bin/sh
+set -eu
+
+git_dir="$(git rev-parse --git-dir 2>/dev/null || true)"
+if [ -z "$git_dir" ]; then
+  echo "ai-task: 当前目录不是 Git 仓库" >&2
+  exit 1
+fi
+
+ai_dir="$git_dir/ai"
+legacy_brief="$ai_dir/task-brief.md"
+thread_id="${CODEX_THREAD_ID:-}"
+thread_key=""
+thread_ai_dir=""
+brief="$legacy_brief"
+cmd="${1:-show}"
+
+mkdir -p "$ai_dir"
+
+if [ -n "$thread_id" ]; then
+  thread_key="$(printf '%s' "$thread_id" | tr -c 'A-Za-z0-9._-' '_')"
+  thread_ai_dir="$ai_dir/threads/$thread_key"
+  brief="$thread_ai_dir/task-brief.md"
+fi
+
+now() {
+  date '+%Y-%m-%d %H:%M:%S %z'
+}
+
+ensure_brief_parent() {
+  mkdir -p "$(dirname "$brief")"
+}
+
+seed_thread_brief_from_legacy() {
+  if [ "$brief" = "$legacy_brief" ]; then
+    return 0
+  fi
+
+  if [ -f "$brief" ] || [ ! -f "$legacy_brief" ]; then
+    return 0
+  fi
+
+  ensure_brief_parent
+  cp "$legacy_brief" "$brief"
+}
+
+display_brief_path() {
+  if [ -f "$brief" ]; then
+    printf '%s\n' "$brief"
+    return 0
+  fi
+
+  if [ "$brief" != "$legacy_brief" ] && [ -f "$legacy_brief" ]; then
+    printf '%s\n' "$legacy_brief"
+    return 0
+  fi
+
+  return 1
+}
+
+usage() {
+  cat <<'EOF'
+用法:
+  ai-task show
+  ai-task path
+  ai-task set "目标：... 关键约束：..."
+  ai-task append "进展：... 验证：... 风险：..."
+  ai-task clear
+  ai-task --help
+EOF
+}
+
+case "$cmd" in
+  -h|--help|help)
+    usage
+    ;;
+  show|status)
+    if current_brief="$(display_brief_path)"; then
+      cat "$current_brief"
+    else
+      echo "ai-task: 尚未记录任务摘要"
+      usage
+    fi
+    ;;
+  path)
+    echo "$brief"
+    ;;
+  clear)
+    rm -f "$brief"
+    echo "ai-task: 已清理任务摘要"
+    ;;
+  set)
+    shift
+    if [ "$#" -eq 0 ]; then
+      echo "ai-task: set 需要摘要内容" >&2
+      exit 1
+    fi
+    ensure_brief_parent
+    {
+      echo "# AI Task Brief"
+      echo
+      echo "Updated: $(now)"
+      echo
+      printf '%s\n' "$*"
+    } > "$brief"
+    echo "ai-task: 已写入 $brief"
+    ;;
+  append)
+    shift
+    if [ "$#" -eq 0 ]; then
+      echo "ai-task: append 需要摘要内容" >&2
+      exit 1
+    fi
+    seed_thread_brief_from_legacy
+    if [ ! -f "$brief" ]; then
+      ensure_brief_parent
+      {
+        echo "# AI Task Brief"
+        echo
+        echo "Updated: $(now)"
+      } > "$brief"
+    fi
+    {
+      echo
+      echo "## $(now)"
+      printf '%s\n' "$*"
+    } >> "$brief"
+    echo "ai-task: 已追加到 $brief"
+    ;;
+  *)
+    echo "ai-task: 未知命令: $cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

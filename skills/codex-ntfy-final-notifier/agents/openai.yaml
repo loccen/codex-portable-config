@@ -1,0 +1,3 @@
+display_name: ntfy 最终通知
+short_description: 通过 ntfy 将 Codex 最终摘要推送到手机通知栏。
+default_prompt: 使用 $codex-ntfy-final-notifier 在最终答复前发送手机通知。

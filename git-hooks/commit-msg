@@ -1,0 +1,60 @@
+#!/bin/sh
+set -eu
+
+msg_file="$1"
+
+if [ "${AI_COMMIT_TRAILERS_SKIP:-}" = "1" ]; then
+  exit 0
+fi
+
+required_keys="
+AI-Agent
+AI-Model
+AI-Tool
+AI-Role
+Review-Status
+Prompt-Summary
+"
+
+has_key() {
+  key="$1"
+  grep -Eiq "^${key}:[[:space:]]*[^[:space:]]" "$msg_file"
+}
+
+has_any_ai_trailer() {
+  grep -Eiq '^(AI-Agent|AI-Model|AI-Tool|AI-Role|Review-Status|Prompt-Summary):[[:space:]]*' "$msg_file"
+}
+
+if [ "${AI_COMMIT_TRAILERS_REQUIRED:-}" != "1" ] && ! has_any_ai_trailer; then
+  exit 0
+fi
+
+missing=""
+for key in $required_keys; do
+  if ! has_key "$key"; then
+    missing="${missing} ${key}"
+  fi
+done
+
+if [ -n "$missing" ]; then
+  echo "commit-msg: AI 提交缺少必填 trailer:${missing}" >&2
+  echo "请使用 ai-commit，或在提交信息末尾补齐这些字段。" >&2
+  exit 1
+fi
+
+summary="$(grep -Ei '^Prompt-Summary:[[:space:]]*' "$msg_file" | tail -n 1 | sed -E 's/^[^:]+:[[:space:]]*//')"
+summary_bytes="$(printf '%s' "$summary" | wc -c | tr -d ' ')"
+
+if [ "$summary_bytes" -gt 500 ]; then
+  echo "commit-msg: Prompt-Summary 过长，请控制在约 500 字节以内" >&2
+  exit 1
+fi
+
+case "$summary" in
+  *token*|*TOKEN*|*cookie*|*COOKIE*|*password*|*PASSWORD*|*secret*|*SECRET*)
+    echo "commit-msg: Prompt-Summary 疑似包含敏感词，请改写摘要" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

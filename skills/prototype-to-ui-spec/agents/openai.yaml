@@ -1,0 +1,4 @@
+interface:
+  display_name: "原型转 UI 说明"
+  short_description: "基于原型和已验收静态 DEMO 输出可实现 UI 说明"
+  default_prompt: "使用 $prototype-to-ui-spec，根据高保真原型图和已通过 90 分还原度验收的静态 HTML DEMO，输出可直接交付前端开发的 UI 设计说明。"

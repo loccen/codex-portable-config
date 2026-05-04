@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+用法:
+  ai-commit <codex|claude|human> -m "提交标题" --summary "Prompt 摘要" [选项] [-- git commit 参数]
+
+选项:
+  --model VALUE          覆盖 AI-Model
+  --tool VALUE           覆盖 AI-Tool
+  --role VALUE           AI-Role，默认 implementation
+  --review-status VALUE  Review-Status，默认 unreviewed
+  --summary VALUE        Prompt-Summary，AI 必须自行总结后传入
+
+环境变量:
+  AI_MODEL / AI_TOOL / AI_ROLE / AI_REVIEW_STATUS / AI_PROMPT_SUMMARY
+
+示例:
+  ai-task set "目标：修复登录态刷新。约束：不改接口契约。"
+  ai-commit codex -m "修复登录态刷新" --summary "根据用户要求修复登录态刷新问题，并保持现有接口契约不变。"
+EOF
+}
+
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+  echo "ai-commit: 当前目录不是 Git 仓库" >&2
+  exit 1
+fi
+
+resolve_brief_path() {
+  local git_dir ai_dir legacy_brief thread_id thread_key thread_brief
+
+  git_dir="$(git rev-parse --git-dir)"
+  ai_dir="$git_dir/ai"
+  legacy_brief="$ai_dir/task-brief.md"
+  thread_id="${CODEX_THREAD_ID:-}"
+
+  if [ -n "$thread_id" ]; then
+    thread_key="$(printf '%s' "$thread_id" | tr -c 'A-Za-z0-9._-' '_')"
+    thread_brief="$ai_dir/threads/$thread_key/task-brief.md"
+    if [ -f "$thread_brief" ]; then
+      printf '%s\n' "$thread_brief"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "$legacy_brief"
+}
+
+if git diff --cached --quiet --exit-code; then
+  echo "ai-commit: 当前没有 staged 改动，请先 git add" >&2
+  exit 1
+fi
+
+if [ "$#" -lt 1 ]; then
+  usage
+  exit 1
+fi
+
+agent_key="$1"
+shift
+
+case "$agent_key" in
+  codex)
+    agent="${AI_AGENT:-Codex}"
+    model="${AI_MODEL:-${CODEX_MODEL:-GPT-5}}"
+    tool="${AI_TOOL:-Codex}"
+    ;;
+  claude)
+    agent="${AI_AGENT:-Claude Code}"
+    model="${AI_MODEL:-${CLAUDE_MODEL:-Claude Sonnet}}"
+    tool="${AI_TOOL:-Claude Code CLI}"
+    ;;
+  human)
+    agent="${AI_AGENT:-Human}"
+    model="${AI_MODEL:-N/A}"
+    tool="${AI_TOOL:-Git CLI}"
+    ;;
+  *)
+    echo "ai-commit: 未知 agent: $agent_key" >&2
+    usage
+    exit 1
+    ;;
+esac
+
+subject=""
+summary="${AI_PROMPT_SUMMARY:-}"
+role="${AI_ROLE:-implementation}"
+review_status="${AI_REVIEW_STATUS:-unreviewed}"
+git_args=()
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -m|--message)
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "ai-commit: -m/--message 缺少提交标题" >&2
+        exit 1
+      fi
+      subject="$1"
+      ;;
+    --summary)
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "ai-commit: --summary 缺少内容" >&2
+        exit 1
+      fi
+      summary="$1"
+      ;;
+    --model)
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "ai-commit: --model 缺少内容" >&2
+        exit 1
+      fi
+      model="$1"
+      ;;
+    --tool)
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "ai-commit: --tool 缺少内容" >&2
+        exit 1
+      fi
+      tool="$1"
+      ;;
+    --role)
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "ai-commit: --role 缺少内容" >&2
+        exit 1
+      fi
+      role="$1"
+      ;;
+    --review-status)
+      shift
+      if [ "$#" -eq 0 ]; then
+        echo "ai-commit: --review-status 缺少内容" >&2
+        exit 1
+      fi
+      review_status="$1"
+      ;;
+    --)
+      shift
+      git_args+=("$@")
+      break
+      ;;
+    *)
+      git_args+=("$1")
+      ;;
+  esac
+  shift
+done
+
+if [ -z "$subject" ]; then
+  echo "ai-commit: 必须通过 -m/--message 提交中文标题" >&2
+  usage
+  exit 1
+fi
+
+if [ -z "$summary" ]; then
+  brief="$(resolve_brief_path)"
+  echo "ai-commit: 缺少 Prompt-Summary" >&2
+  if [ -f "$brief" ]; then
+    echo "当前任务摘要在: $brief" >&2
+    echo "请先读取 ai-task show 和 staged diff，自行总结后传入 --summary" >&2
+  else
+    echo "建议先执行: ai-task set \"目标：... 关键约束：...\"" >&2
+  fi
+  exit 1
+fi
+
+git_dir="$(git rev-parse --git-dir)"
+mkdir -p "$git_dir/ai"
+msgfile="$git_dir/ai/commit-message.$$"
+trap 'rm -f "$msgfile"' EXIT
+
+{
+  printf '%s\n\n' "$subject"
+  printf 'AI-Agent: %s\n' "$agent"
+  printf 'AI-Model: %s\n' "$model"
+  printf 'AI-Tool: %s\n' "$tool"
+  printf 'AI-Role: %s\n' "$role"
+  printf 'Review-Status: %s\n' "$review_status"
+  printf 'Prompt-Summary: %s\n' "$summary"
+} > "$msgfile"
+
+if [ "${#git_args[@]}" -gt 0 ]; then
+  AI_COMMIT_TRAILERS_REQUIRED=1 git commit -F "$msgfile" "${git_args[@]}"
+else
+  AI_COMMIT_TRAILERS_REQUIRED=1 git commit -F "$msgfile"
+fi
