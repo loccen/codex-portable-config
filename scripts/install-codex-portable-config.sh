@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/ntfy-env.sh"
 
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 BIN_HOME="${CODEX_BIN_HOME:-$HOME/.local/bin}"
@@ -11,7 +12,6 @@ STATE_HOME="${CODEX_HOME}/portable-config"
 AGENTS_TARGET="${CODEX_HOME}/AGENTS.md"
 AGENTS_TEMPLATE="${REPO_ROOT}/templates/user/AGENTS.md"
 NTFY_ENV_TARGET="${CODEX_HOME}/ntfy-notifier.env"
-NTFY_ENV_TEMPLATE="${REPO_ROOT}/env/ntfy-notifier.env.example"
 TIMESTAMP="$(date '+%Y%m%d%H%M%S')"
 
 MANAGED_SKILLS=(
@@ -58,6 +58,39 @@ sync_skill() {
   cp -R "$source_dir" "$target_dir"
 }
 
+ensure_ntfy_env() {
+  local topic
+  local server
+  local priority
+  local title
+  local tags
+
+  topic="$(ntfy_extract_export_value "$NTFY_ENV_TARGET" "NTFY_TOPIC" || true)"
+  if ntfy_is_valid_topic "$topic"; then
+    log "保留现有 ntfy topic: ${topic}"
+    return 0
+  fi
+
+  server="$(ntfy_extract_export_value "$NTFY_ENV_TARGET" "NTFY_SERVER" || true)"
+  priority="$(ntfy_extract_export_value "$NTFY_ENV_TARGET" "NTFY_PRIORITY" || true)"
+  title="$(ntfy_extract_export_value "$NTFY_ENV_TARGET" "NTFY_TITLE" || true)"
+  tags="$(ntfy_extract_export_value "$NTFY_ENV_TARGET" "NTFY_TAGS" || true)"
+
+  [[ -n "$server" ]] || server="$(ntfy_default_server)"
+  [[ -n "$priority" ]] || priority="$(ntfy_default_priority)"
+  [[ -n "$title" ]] || title="$(ntfy_default_title)"
+  [[ -n "$tags" ]] || tags="$(ntfy_default_tags)"
+
+  if [[ -f "$NTFY_ENV_TARGET" ]]; then
+    cp "$NTFY_ENV_TARGET" "${NTFY_ENV_TARGET}.bak.${TIMESTAMP}"
+    log "已备份 ${NTFY_ENV_TARGET} -> ${NTFY_ENV_TARGET}.bak.${TIMESTAMP}"
+  fi
+
+  topic="$(ntfy_generate_topic)"
+  ntfy_write_env_file "$NTFY_ENV_TARGET" "$topic" "$server" "$priority" "$title" "$tags"
+  log "已生成 ntfy topic: ${topic}"
+}
+
 ensure_dir "$CODEX_HOME"
 ensure_dir "${CODEX_HOME}/skills"
 ensure_dir "$BIN_HOME"
@@ -86,11 +119,7 @@ for skill_name in "${MANAGED_SKILLS[@]}"; do
 done
 
 chmod +x "${CODEX_HOME}/skills/codex-ntfy-final-notifier/scripts/send-ntfy-final-summary.sh"
-
-if [[ ! -f "$NTFY_ENV_TARGET" ]]; then
-  install -m 0600 "$NTFY_ENV_TEMPLATE" "$NTFY_ENV_TARGET"
-  log "已写入 ntfy 占位配置模板"
-fi
+ensure_ntfy_env
 
 printf '%s\n' "$REPO_ROOT" > "${STATE_HOME}/source-repo.txt"
 printf '%s\n' "$(date '+%Y-%m-%d %H:%M:%S %z')" > "${STATE_HOME}/installed-at.txt"

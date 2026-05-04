@@ -31,8 +31,9 @@
 
 ## ntfy 最终完成通知
 
+- portable config 安装完成后，应自动创建或修复 `~/.codex/ntfy-notifier.env`，并生成可用的 `NTFY_TOPIC`；若已有有效 topic，安装脚本应优先保留。
 - 每个主代理会话在最终答复用户之前，如果 `~/.codex/skills/codex-ntfy-final-notifier` 存在，且 `~/.codex/ntfy-notifier.env` 中配置了有效 `NTFY_TOPIC`，则必须调用 `codex-ntfy-final-notifier` Skill，通过 ntfy 发送本轮执行摘要。
-- 如果 skill 不存在、env 文件不存在，或 `NTFY_TOPIC` 仍是占位值，则允许跳过，但必须在最终答复中说明跳过原因。
+- 如果 skill 不存在、env 文件丢失，或 topic 被手工改坏，则允许跳过，但必须在最终答复中说明跳过原因，并提示重新运行 `./install.sh` / `./doctor.sh` 修复与查看订阅 topic。
 - 只有主代理可以调用该 Skill。
 - 只在最终完成、准备向用户收口之前调用。
 - 子代理、并行代理、临时调研代理、阶段性任务不得调用。

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+source "${SCRIPT_DIR}/lib/ntfy-env.sh"
 
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 BIN_HOME="${CODEX_BIN_HOME:-$HOME/.local/bin}"
@@ -64,16 +65,17 @@ else
   fail "Git hooksPath 未指向 ${HOOKS_HOME}"
 fi
 
+NTFY_TOPIC_VALUE="$(ntfy_extract_export_value "$NTFY_ENV_TARGET" "NTFY_TOPIC" || true)"
+
 if [[ -f "$NTFY_ENV_TARGET" ]]; then
-  if grep -Eq '^export NTFY_TOPIC="__FILL_ME__"$' "$NTFY_ENV_TARGET"; then
-    warn "ntfy 仍为占位配置；最终通知将以 best-effort 方式跳过或失败"
-  elif grep -Eq '^export NTFY_TOPIC=".+\"$' "$NTFY_ENV_TARGET"; then
+  if ntfy_is_valid_topic "$NTFY_TOPIC_VALUE"; then
     pass "ntfy 配置文件已存在"
+    pass "ntfy topic 可用，请在 ntfy 客户端订阅: ${NTFY_TOPIC_VALUE}"
   else
-    warn "ntfy 配置文件存在，但未检测到有效的 NTFY_TOPIC"
+    warn "ntfy 配置文件存在，但未检测到有效的 NTFY_TOPIC；可重新运行 ./install.sh 自动修复"
   fi
 else
-  warn "缺少 ntfy 配置文件；最终通知将以 best-effort 方式跳过"
+  warn "缺少 ntfy 配置文件；可运行 ./install.sh 自动生成 topic"
 fi
 
 if bash -n "${CODEX_HOME}/skills/codex-ntfy-final-notifier/scripts/send-ntfy-final-summary.sh"; then
@@ -124,6 +126,10 @@ git init "$TEST_REPO" >/dev/null 2>&1
     fi
   done
 )
+
+if ntfy_is_valid_topic "$NTFY_TOPIC_VALUE"; then
+  printf '[info] 请订阅 ntfy topic: %s\n' "$NTFY_TOPIC_VALUE"
+fi
 
 printf '[summary] warnings=%s errors=%s\n' "$WARNINGS" "$ERRORS"
 

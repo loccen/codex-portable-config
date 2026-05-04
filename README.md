@@ -21,7 +21,7 @@
 - `skills/`
   随仓库分发的用户级 skill 副本。
 - `env/ntfy-notifier.env.example`
-  本地通知配置模板。
+  本地通知配置示例与默认值。
 - `install.sh`
   入口安装脚本。
 - `doctor.sh`
@@ -50,11 +50,14 @@
 2. 安装 `ai-commit`、`ai-task` 到 `~/.local/bin`。
 3. 安装全局 `commit-msg` hook 到 `~/.config/git/hooks`，并写入 `git config --global core.hooksPath`。
 4. 同步仓库内的 skill 到 `~/.codex/skills/`。
-5. 若 `~/.codex/ntfy-notifier.env` 不存在，则写入占位模板。
+5. 自动创建或修复 `~/.codex/ntfy-notifier.env`，为本机生成可直接使用的 ntfy topic；若已有有效 topic，则原样保留。
 6. 给 `~/.bashrc` 与 `~/.zshrc` 追加 `~/.local/bin` PATH。
+
+安装完成后运行 `./doctor.sh`，会在通过信息里直接打印当前应订阅的 ntfy topic，便于把手机端订阅动作作为迁移收尾的一部分。
 
 ## 敏感信息策略
 
 - 不提交真实 `NTFY_TOPIC`、token、cookie、日志或账号态。
 - `env/` 里只放 example。
-- 新机器若还没有有效 `NTFY_TOPIC`，迁移允许先完成；最终通知链路以 best-effort 方式运行。
+- fresh install 会自动生成唯一 topic；若本机已有有效 topic，安装脚本优先保留。
+- 如果 env 被手工删坏、topic 仍是占位值，或格式明显无效，重新运行 `./install.sh` 会自动修复，`./doctor.sh` 会打印可订阅的 topic。
